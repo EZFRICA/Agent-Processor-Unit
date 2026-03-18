@@ -32,6 +32,8 @@ if "memory_facts" not in st.session_state:
     st.session_state.memory_facts = {}
 if "last_injected_ids" not in st.session_state:
     st.session_state.last_injected_ids = []
+if "sync_version" not in st.session_state:
+    st.session_state.sync_version = 0
 
 # Load local DLL state
 dll_state = load_dll()
@@ -84,8 +86,37 @@ if not st.session_state.memory_facts:
             st.warning("🧹 Cleaned up orphaned dynamic blocks that were missing from Letta.")
             st.rerun()
 
-# --- HEADER STATISTICS ---
-st.title("✈️ Travel Agent — DLL Memory Dashboard")
+# --- HEADER ---
+c1, c2 = st.columns([4, 1])
+with c1:
+    st.title("✈️ Travel Agent — DLL Memory")
+with c2:
+    if st.button("🔄 Sync Cloud", use_container_width=True, help="Force reload from Letta Cloud"):
+        with st.spinner("Forcing Cloud Sync..."):
+            current_dll = load_dll()
+            nodes = get_all_nodes(current_dll)
+            fresh_facts = {}
+            ghost_blocks_deleted = False
+            for node in nodes:
+                b_id = node["id"]
+                content = get_core_block_content(agent_id, b_id)
+                if content is None:
+                    if not node.get("is_fixed", False):
+                        try:
+                            current_dll = delete_block_stitching(b_id, current_dll)
+                            ghost_blocks_deleted = True
+                        except Exception as e:
+                            st.warning(f"Cleanup error for {b_id}: {e}")
+                    fresh_facts[b_id] = ""
+                else:
+                    fresh_facts[b_id] = content
+            st.session_state.memory_facts = fresh_facts
+            st.session_state.sync_version += 1
+            if ghost_blocks_deleted:
+                save_dll(current_dll)
+            st.success("Synced!")
+            st.rerun()
+
 m1, m2, m3 = st.columns(3)
 m1.metric("Dynamic Blocks", f"{dll_state['dynamic_block_count']} / {dll_state['dynamic_block_max']}")
 m2.metric("Fixed Blocks", "4")
@@ -127,6 +158,8 @@ with col_left:
     st.markdown("### Current order: [HEAD] → [TAIL]")
     nodes = get_all_nodes(dll_state)
     
+    v = st.session_state.sync_version
+
     for idx_pos, node in enumerate(nodes):
         b_id = node["id"]
         is_active = node.get("active", True)
@@ -142,16 +175,16 @@ with col_left:
             c1, c2 = st.columns([2, 1])
             with c1:
                 st.markdown("**Vectorized keywords:** " + ", ".join([f"`{k}`" for k in node.get("keywords", [])]))
-                new_kw_str = st.text_input("Update keywords", value=", ".join(node.get("keywords", [])), key=f"kw_in_{b_id}")
-                if st.button("Re-vectorize", key=f"vec_btn_{b_id}"):
+                new_kw_str = st.text_input("Update keywords", value=", ".join(node.get("keywords", [])), key=f"kw_in_{b_id}_v{v}")
+                if st.button("Re-vectorize", key=f"vec_btn_{b_id}_v{v}"):
                     new_kw_list = [k.strip() for k in new_kw_str.split(",") if k.strip()]
                     dll_state = update_node_keywords(b_id, new_kw_list, dll_state)
                     save_dll(dll_state)
                     st.success("Re-vectorized!")
                     st.rerun()
                 
-                curr_txt = st.text_area("Block content", value=live_content, height=150, key=f"txt_in_{b_id}")
-                if st.button("💾 Save (Sync all)", key=f"save_btn_{b_id}", type="primary"):
+                curr_txt = st.text_area("Block content", value=live_content, height=150, key=f"txt_in_{b_id}_v{v}")
+                if st.button("💾 Save (Sync all)", key=f"save_btn_{b_id}_v{v}", type="primary"):
                     try:
                         dll_state = update_block_content(
                             b_id, curr_txt, node.get("keywords", []), dll_state, letta_client, wcd_client
@@ -167,14 +200,14 @@ with col_left:
                     st.info("📌 Fixed Block")
                     st.caption("Always included in memory")
                 else:
-                    active_tog = st.checkbox("📌 Force Include (Override)", value=is_active, help="Forces the injection of this dynamic block to the AI.", key=f"act_tog_{b_id}")
+                    active_tog = st.checkbox("📌 Force Include (Override)", value=is_active, help="Forces the injection of this dynamic block to the AI.", key=f"act_tog_{b_id}_v{v}")
                     if active_tog != is_active:
                         toggle_block(b_id, active_tog, dll_state)
                         save_dll(dll_state)
                         st.rerun()
                 
                 if not is_fixed:
-                    if st.button("🗑️ Delete", key=f"del_btn_{b_id}", use_container_width=True):
+                    if st.button("🗑️ Delete", key=f"del_btn_{b_id}_v{v}", use_container_width=True):
                         dll_state = delete_block_stitching(b_id, dll_state)
                         save_dll(dll_state)
                         delete_block(agent_id, b_id)
