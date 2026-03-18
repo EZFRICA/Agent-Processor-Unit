@@ -102,16 +102,15 @@ def ingest_block(client, collection_name: str, block_id: str,
     logger.debug("Block '%s' ingested into '%s'.", block_id, collection_name)
 
 
-def delete_block_vectors(client, block_id: str) -> None:
+def delete_block_vectors(client, block_id: str, collection_name: str = "TravelDynamic") -> None:
     """
-    Delete all vectors for a block from TravelDynamic.
-    Fixed blocks (TravelFixed) are never deleted.
+    Delete all vectors for a block from a specific collection (TravelDynamic by default).
     """
-    collection = client.collections.get("TravelDynamic")
+    collection = client.collections.get(collection_name)
     collection.data.delete_many(
         where=Filter.by_property("block_id").equal(block_id)
     )
-    logger.debug("Weaviate vectors deleted for block '%s'.", block_id)
+    logger.debug("Weaviate vectors deleted for block '%s' in collection '%s'.", block_id, collection_name)
 
 
 def setup_collections(client=None) -> None:

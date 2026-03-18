@@ -60,9 +60,29 @@ with st.sidebar:
 if not st.session_state.memory_facts:
     with st.spinner("Syncing Letta Memory..."):
         nodes = get_all_nodes(dll_state)
+        ghost_blocks_deleted = False
+        
         for node in nodes:
-            content = get_core_block_content(agent_id, node['id'])
-            st.session_state.memory_facts[node['id']] = content
+            b_id = node['id']
+            content = get_core_block_content(agent_id, b_id)
+            
+            if content is None:  # Block returns 404 Not Found from Letta
+                if not node.get("is_fixed", False):
+                    # Automatic cleanup for orphaned dynamic blocks
+                    try:
+                        dll_state = delete_block_stitching(b_id, dll_state)
+                        ghost_blocks_deleted = True
+                    except Exception as e:
+                        st.error(f"Cleanup error for {b_id}: {e}")
+                else:
+                    st.session_state.memory_facts[b_id] = ""
+            else:
+                st.session_state.memory_facts[b_id] = content
+                
+        if ghost_blocks_deleted:
+            save_dll(dll_state)
+            st.warning("🧹 Cleaned up orphaned dynamic blocks that were missing from Letta.")
+            st.rerun()
 
 # --- HEADER STATISTICS ---
 st.title("✈️ Travel Agent — DLL Memory Dashboard")
@@ -130,12 +150,17 @@ with col_left:
                     st.success("Re-vectorized!")
                     st.rerun()
                 
-                curr_txt = st.text_area("Block content (Letta Core Memory)", value=live_content, height=150, key=f"txt_in_{b_id}")
-                if st.button("💾 Save to Letta", key=f"save_btn_{b_id}", type="primary"):
-                    update_block(agent_id, b_id, curr_txt)
-                    st.session_state.memory_facts[b_id] = curr_txt
-                    st.success("Saved content!")
-                    st.rerun()
+                curr_txt = st.text_area("Block content", value=live_content, height=150, key=f"txt_in_{b_id}")
+                if st.button("💾 Save (Sync all)", key=f"save_btn_{b_id}", type="primary"):
+                    try:
+                        dll_state = update_block_content(
+                            b_id, curr_txt, node.get("keywords", []), dll_state, letta_client, wcd_client
+                        )
+                        st.session_state.memory_facts[b_id] = curr_txt
+                        st.success("Synced to Letta & Weaviate!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Sync error: {e}")
             
             with c2:
                 if is_fixed:
@@ -229,8 +254,24 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                         
                     # Final sync of memory facts
                     dll_state = load_dll()  # Reload to get MTF changes
-                    for b_id in dll_state["nodes"]:
+                    nodes_to_check = list(dll_state["nodes"].keys())
+                    ghost_blocks_deleted = False
+                    
+                    for b_id in nodes_to_check:
                          content = get_core_block_content(agent_id, b_id)
-                         st.session_state.memory_facts[b_id] = content
+                         if content is None:
+                             if not dll_state["nodes"].get(b_id, {}).get("is_fixed", False):
+                                 try:
+                                     dll_state = delete_block_stitching(b_id, dll_state)
+                                     ghost_blocks_deleted = True
+                                 except:
+                                     pass
+                             else:
+                                 st.session_state.memory_facts[b_id] = ""
+                         else:
+                             st.session_state.memory_facts[b_id] = content
+                             
+                    if ghost_blocks_deleted:
+                        save_dll(dll_state)
                     
                     st.rerun()

@@ -4,12 +4,17 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-def get_core_block_content(agent_id: str, label: str) -> str:
-    """Fetch the content of a core memory block from Letta Cloud API."""
+from typing import Optional
+
+def get_core_block_content(agent_id: str, label: str) -> Optional[str]:
+    """Fetch the content of a core memory block from Letta Cloud API. Returns None if 404 (Missing)."""
     try:
         block = letta.agents.blocks.retrieve(label, agent_id=agent_id)
-        return block.value or ""
+        if block.value is not None:
+             return block.value
     except Exception as e:
+        if "404" in str(e):
+             return None
         logger.warning("Could not read block '%s' from Letta API: %s", label, e)
     return ""
 
@@ -24,6 +29,9 @@ def compile_working_context(agent_id: str, relevant_blocks: list[dict], query: s
     for block in relevant_blocks:
         label = block["id"]
         content = get_core_block_content(agent_id, label)
+        if content is None:
+            content = ""
+            
         context_parts.append(f"--- BLOCK: {block['label'].upper()} ({block['type']}) ---")
         context_parts.append(content)
         context_parts.append("")  # blank line separator

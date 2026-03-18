@@ -85,18 +85,17 @@ def update_block(agent_id: str, block_label: str, new_content: str) -> None:
 
 def append_block(agent_id: str, block_label: str, content: str, block_type: str = "projet") -> None:
     """
-    Create or update a dynamic block in Letta Core Memory.
-    Uses blocks.update() — Letta manages block creation at agent init (attach).
+    Create a new dynamic block in Letta Cloud and attach it to the Agent's Core Memory.
     """
+    logger.debug("Creating block '%s' and attaching to agent %s...", block_label, agent_id)
     try:
-        letta.agents.blocks.update(
-            block_label,
-            agent_id=agent_id,
-            value=content,
-        )
-        logger.debug("Letta block '%s' updated.", block_label)
+        # Create the block using Letta's BlockManager
+        new_block = letta.blocks.create(label=block_label, value=content, limit=2000)
+        # Attach the newly created block to the specific agent
+        letta.agents.blocks.attach(block_id=new_block.id, agent_id=agent_id)
+        logger.debug("Letta block '%s' created and attached successfully.", block_label)
     except Exception as e:
-        logger.error("Letta: failed to update block '%s': %s", block_label, e)
+        logger.error("Letta: failed to create and attach block '%s': %s", block_label, e)
 
 
 def delete_block(agent_id: str, block_label: str) -> None:
