@@ -17,7 +17,7 @@ from memory import letta_cloud_client as letta_client
 from memory import weaviate_cloud_client as wcd_client
 from memory.context_compiler import get_core_block_content
 
-st.set_page_config(page_title="Travel Agent — DLL Dashboard", page_icon="✈️", layout="wide")
+st.set_page_config(page_title="Travel Agent — Agent OS/DLL Dashboard", page_icon="🧠", layout="wide")
 
 # --- Initialize Session State ---
 if "messages" not in st.session_state:
@@ -45,7 +45,7 @@ if not agent_id:
 
 # --- SIDEBAR : NAVIGATION & OPTIONS ---
 with st.sidebar:
-    st.title("🧠 Agent 0S/UX-Memory")
+    st.title("🧠 Agent OS/UX-Memory")
     st.info(f"Active DLL : {len(get_all_nodes(dll_state))}/12 blocks")
     st.divider()
     
@@ -151,7 +151,7 @@ if not st.session_state.memory_facts:
 # --- HEADER ---
 c1, c2 = st.columns([4, 1])
 with c1:
-    st.title("✈️ Travel Agent — Agent 0S/DLL Memory")
+    st.title("✈️ Travel Agent — Agent OS/DLL Memory")
 with c2:
     if st.button("🔄 Sync Cloud", use_container_width=True, help="Force reload from Letta Cloud"):
         with st.spinner("Forcing Cloud Sync..."):

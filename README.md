@@ -1,4 +1,4 @@
-# UX-Driven Agent Memory 🧠✈️
+# Agent OS / UX-Driven Agent Memory 🧠
 
 This project explores a novel architecture for building dynamic, user-transparent memory for AI agents (focusing on a Travel Planner Use-Case). It replaces the traditional "black box" RAG pipeline with a **DLL (Doubly Linked List)** architecture powered by the **BMJ (Bidirectional Metadata Jump)** algorithm, backed by Weaviate and Letta Cloud.
 
