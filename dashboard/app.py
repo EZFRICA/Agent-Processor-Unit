@@ -45,7 +45,7 @@ if not agent_id:
 
 # --- SIDEBAR : NAVIGATION & OPTIONS ---
 with st.sidebar:
-    st.title("🧠 UX-Memory")
+    st.title("🧠 Agent 0S/UX-Memory")
     st.info(f"Active DLL : {len(get_all_nodes(dll_state))}/12 blocks")
     st.divider()
     
@@ -151,7 +151,7 @@ if not st.session_state.memory_facts:
 # --- HEADER ---
 c1, c2 = st.columns([4, 1])
 with c1:
-    st.title("✈️ Travel Agent — DLL Memory")
+    st.title("✈️ Travel Agent — Agent 0S/DLL Memory")
 with c2:
     if st.button("🔄 Sync Cloud", use_container_width=True, help="Force reload from Letta Cloud"):
         with st.spinner("Forcing Cloud Sync..."):

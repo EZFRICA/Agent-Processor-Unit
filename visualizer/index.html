@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UX-Memory Visualizer | DLL Monitor</title>
+    <title>Agent 0S/UX-Memory Visualizer | DLL Monitor</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -135,8 +136,15 @@
         }
 
         @keyframes fadeInDown {
-            from { opacity: 0; transform: translateY(-30px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .pulse {
@@ -151,12 +159,24 @@
         }
 
         @keyframes pulse-ring {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>DLL MEMORY FLOW</h1>
@@ -174,11 +194,11 @@
             try {
                 const response = await fetch('/api/memory');
                 const data = await response.json();
-                
+
                 const container = document.getElementById('dll-container');
                 const nodes = data.nodes;
                 const headId = data.head_id;
-                
+
                 // Get ordered list from HEAD to TAIL
                 let currentId = headId;
                 const orderedNodes = [];
@@ -203,7 +223,7 @@
 
         function renderNodes(orderedNodes) {
             const container = document.getElementById('dll-container');
-            
+
             // Check if order changed
             const currentOrderStr = orderedNodes.map(n => n.id).join(',');
             if (currentOrderStr === lastOrder) return;
@@ -214,7 +234,7 @@
             orderedNodes.forEach((node, index) => {
                 const nodeEl = document.createElement('div');
                 nodeEl.className = `block-node ${node.is_fixed ? 'fixed' : 'dynamic'}`;
-                
+
                 // In a real demo, we'd fetch actual "injected" status. 
                 // For now, let's just highlight if active override is on.
                 if (node.active) nodeEl.classList.add('injected');
@@ -244,4 +264,5 @@
         updateVisualizer();
     </script>
 </body>
+
 </html>
