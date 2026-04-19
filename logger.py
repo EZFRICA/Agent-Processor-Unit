@@ -46,7 +46,14 @@ def configure_root_logger():
     formatter = ColoredFormatter(LOG_FORMAT, datefmt=DATE_FORMAT)
     console_handler.setFormatter(formatter)
     
+    # File handler for Dashboard display (no colors)
+    file_handler = logging.FileHandler("apu_runtime.log", mode="a", encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    clean_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    file_handler.setFormatter(clean_formatter)
+    
     root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
 
 
 def get_logger(name: str) -> logging.Logger:

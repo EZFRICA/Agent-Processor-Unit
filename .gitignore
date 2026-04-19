@@ -42,3 +42,7 @@ uv.lock
 presentation/
 DEVPOST_SUBMISSION.md
 research/
+apu_runtime.log
+logs_ui/
+agent/
+visualizer/
