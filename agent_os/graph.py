@@ -179,6 +179,114 @@ Return ONLY a valid JSON object, keys must match the block IDs above:
     except Exception as e:
         logger.warning("Memory extraction failed (non-critical): %s", e)
 
+async def _extract_stable_facts_from_tools(
+    agent_id: str,
+    tool_results: list[str],
+    relevant_blocks: list[dict],
+    dll: dict,
+) -> None:
+    """
+    Stable-facts extraction pass — runs only when ToolMessages are present.
+
+    Analyses the raw text returned by tools (e.g. search results) and extracts
+    ONLY facts that are unlikely to change within 6+ months:
+      - Currency, cultural norms, tipping, language
+      - Annual recurring events (festivals, public holidays)
+      - Geography, visa requirements, embassy info
+
+    Volatile data (prices, availability, exchange rates, weather) is explicitly
+    excluded — it stays ephemeral in the LangGraph message history.
+
+    Non-critical: failures are logged but do not interrupt the response.
+    """
+    if not agent_id or not tool_results:
+        return
+
+    combined_results = "\n\n---\n".join(tool_results)
+
+    # Build block definitions for the extractor
+    block_definitions = []
+    for b_id, node in dll["nodes"].items():
+        block_definitions.append(f"- {b_id}: {node['label']} (Keywords: {', '.join(node.get('keywords', []))})")
+
+    # Fetch current content for relevant blocks
+    fetch_tasks = [get_core_block_content(agent_id, block["id"]) for block in relevant_blocks]
+    fetched_contents = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+    content_cache: dict[str, str] = {}
+    for block, content in zip(relevant_blocks, fetched_contents):
+        content_cache[block["id"]] = "" if isinstance(content, Exception) else (content or "")
+
+    extraction_prompt = f"""You are a permanent memory extraction system for a travel assistant.
+
+Below are raw results fetched from a web search tool:
+---
+{combined_results[:3000]}
+---
+
+AVAILABLE MEMORY BLOCKS TO UPDATE:
+{chr(10).join(block_definitions)}
+
+TASK: Extract ONLY facts that are stable over 6+ months and store them in the most appropriate block.
+
+EXTRACT: currency names & symbols, cultural rules (tipping, customs, language), recurring annual
+events (festivals, public holidays with fixed dates), geographic facts, structural travel info
+(visa policy, embassy contacts).
+
+DO NOT EXTRACT: hotel prices, flight prices, exchange rates, availability, weather forecasts,
+any number that changes frequently.
+
+Return ONLY a valid JSON object with block IDs as keys. Empty string means nothing to add:
+{{
+  "block_id_1": "stable fact to append here",
+  "block_id_2": ""
+}}
+"""
+
+    try:
+        extraction_response = await _extractor_llm.ainvoke(
+            [HumanMessage(content=extraction_prompt)]
+        )
+        raw = extraction_response.content
+        if isinstance(raw, list):
+            raw = "\n".join(b.get("text", "") for b in raw if isinstance(b, dict) and b.get("type") == "text")
+
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+        try:
+            updates: dict = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.warning("Stable facts extraction parsing failed: %s", e)
+            return
+
+        for block_id, new_info in updates.items():
+            if not new_info or not new_info.strip():
+                continue
+
+            current = content_cache.get(block_id, "").strip()
+            if current.startswith("[") and current.endswith("]"):
+                current = ""
+
+            # Avoid re-writing facts already present
+            if new_info.strip() in current:
+                continue
+
+            merged = (current + "\n" + new_info.strip()).strip() if current else new_info.strip()
+
+            node = dll["nodes"].get(block_id)
+            if node:
+                await update_block_content(
+                    block_id,
+                    merged,
+                    node.get("keywords", []),
+                    dll,
+                    letta_client,
+                    wcd_client,
+                    old_content=content_cache.get(block_id),
+                )
+                logger.info("Stable facts write-back: '%s' updated from tool results.", block_id)
+
+    except Exception as e:
+        logger.warning("Stable facts extraction failed (non-critical): %s", e)
 
 async def planner_node_dll(state: AgentState):
     """
@@ -189,7 +297,8 @@ async def planner_node_dll(state: AgentState):
         2. DLL vector routing (BMJ) → select relevant memory blocks.
         3. Compile Working Context from Letta Core Memory.
         4. Call Gemini to generate travel response.
-        5. Memory write-back: extract and persist new user info to Letta.
+        5a. Memory write-back: extract and persist new user info.
+        5b. Stable facts write-back: extract durable facts from tool results.
         6. Block detector: check for structuring topic opportunities.
         7. Move-To-Front on top-ranked block.
     """
@@ -247,6 +356,15 @@ INSTRUCTIONS:
 
     response = await current_llm.ainvoke(payload)
 
+    # If the LLM decided to use a tool, return immediately without memory processing or footer
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        response.name = "Planner"
+        return {
+            "messages": [response],
+            "needs_new_block": "False",
+            "proposed_block_config": {}
+        }
+
     # Extract text — Gemini may return string or list of content blocks
     raw = response.content
     if isinstance(raw, str):
@@ -265,11 +383,32 @@ INSTRUCTIONS:
     text_content = text_content.rstrip() + footer
     logger.debug("Planner response generated (%d chars).", len(text_content))
 
-    # 5. Memory write-back (Extract and update relevant memory blocks)
+    # 5a. Memory write-back (Extract and update relevant memory blocks from user dialogue)
     await _extract_and_update_memory(agent_id, user_query, text_content, relevant_blocks, dll)
 
+    # 5b. Stable facts write-back — only from tools called THIS turn
+    # Slice history after the last HumanMessage to avoid re-processing old tool results
+    from langchain_core.messages import ToolMessage
+    last_human_idx = 0
+    for i, msg in enumerate(messages):
+        if isinstance(msg, HumanMessage):
+            last_human_idx = i
+    current_turn_msgs = messages[last_human_idx:]
+    tool_results = [
+        str(msg.content)
+        for msg in current_turn_msgs
+        if isinstance(msg, ToolMessage) and msg.content
+    ]
+    if tool_results:
+        logger.debug("Found %d tool result(s) this turn — running stable facts extraction.", len(tool_results))
+        await _extract_stable_facts_from_tools(agent_id, tool_results, relevant_blocks, dll)
+
     # 6. Block detector
-    raw_history = [{"role": msg.type, "content": str(msg.content)} for msg in messages]
+    # Map LangChain types to the dict format expected by detect_new_block_opportunity
+    raw_history = [
+        {"role": "user" if isinstance(msg, HumanMessage) else "assistant", "content": str(msg.content)}
+        for msg in messages
+    ]
     proposal = detect_new_block_opportunity(raw_history, dll)
 
     needs_new_block = "False"

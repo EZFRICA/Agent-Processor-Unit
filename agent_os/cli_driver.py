@@ -9,6 +9,7 @@ from agent_os.graph import create_dll_agent_graph
 from langchain_core.messages import HumanMessage
 from logger import get_logger
 from apu.mmu.controller import load_dll
+from apu.mmu.block_factory import auto_execute_block_proposal
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,19 @@ async def run_cli():
                 if node_name == "Planner":
                     last_msg = node_state["messages"][-1]
                     print(f"\nAgent: {last_msg.content}")
+                    
+                    if node_state.get("needs_new_block") == "True":
+                        proposal = node_state.get("proposed_block_config", {})
+                        print(f"\n[Agent System]: {proposal.get('proposal_message')}")
+                        ans = input(f"--> Autoriser la création du bloc '{proposal.get('proposed_id')}' ? (y/n) : ")
+                        if ans.strip().lower() in ['y', 'yes', 'oui', 'o']:
+                            try:
+                                await auto_execute_block_proposal(proposal)
+                                print("[System]: Block created and injected successfully!")
+                            except Exception as e:
+                                print(f"[System]: Error creating block: {e}")
+                        else:
+                            print("[System]: Création de bloc ignorée.")
 
 if __name__ == "__main__":
     try:

@@ -16,6 +16,8 @@ from apu.core.pipeline import get_core_block_content
 from langchain_core.messages import HumanMessage, AIMessage
 import re
 
+from apu.mmu.block_factory import auto_execute_block_proposal
+
 # =====================================================================
 # OS / PAGE CONFIG
 # =====================================================================
@@ -146,6 +148,8 @@ if "langchain_history" not in st.session_state:
     st.session_state.langchain_history = []
 if "last_injected_ids" not in st.session_state:
     st.session_state.last_injected_ids = []
+if "pending_block_proposal" not in st.session_state:
+    st.session_state.pending_block_proposal = None
 
 # Load Initial State for the rest of the page (Chat, etc.)
 dll_state = asyncio.run(load_dll())
@@ -399,6 +403,24 @@ with col_chat:
             with st.chat_message(m["role"]):
                 st.markdown(m["content"])
     
+    if st.session_state.pending_block_proposal:
+        with st.container(border=True):
+            proposal = st.session_state.pending_block_proposal
+            st.info(f"💡 **Memory Suggestion:** {proposal.get('proposal_message')}")
+            btn_col1, btn_col2, _ = st.columns([1, 1, 3])
+            if btn_col1.button("✅ Approve"):
+                with st.spinner("Injecting block into S-MMU..."):
+                    try:
+                        asyncio.run(auto_execute_block_proposal(proposal))
+                        st.toast("Block created and injected successfully!", icon="✅")
+                    except Exception as e:
+                        st.error(f"Failed to create block: {e}")
+                st.session_state.pending_block_proposal = None
+                st.rerun()
+            if btn_col2.button("❌ Decline"):
+                st.session_state.pending_block_proposal = None
+                st.rerun()
+
     if prompt := st.chat_input("Command the APU...", key="chat_input_apu"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.langchain_history.append(HumanMessage(content=prompt))
@@ -419,6 +441,11 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 
                 new_messages = result.get("messages", [])
                 resp_text = new_messages[-1].content
+                
+                # Handle auto-creation logic in Dashboard via HITL
+                if result.get("needs_new_block") == "True":
+                    st.session_state.pending_block_proposal = result.get("proposed_block_config", {})
+
                 st.session_state.messages.append({"role": "assistant", "content": resp_text})
                 st.session_state.langchain_history = new_messages
                 
